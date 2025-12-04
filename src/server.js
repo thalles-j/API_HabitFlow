@@ -9,7 +9,14 @@ import { authMiddleware } from './middleware/auth.js';
 dotenv.config();
 
 const app = express();
-app.use(cors());
+
+// Configuração do CORS
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || '*',
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(express.json());
 
 app.get('/', (req, res) => {
