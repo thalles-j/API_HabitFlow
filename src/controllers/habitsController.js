@@ -163,3 +163,54 @@ export async function listHabits(req, res) {
   })
   res.json(habits)
 }
+
+export async function updateHabit(req, res) {
+  try {
+    const { id } = req.params;
+    const { title, weekDays, monthlyDay, specificDate, timeStart, timeEnd } = req.body;
+
+    if (!title || (!weekDays?.length && !monthlyDay && !specificDate)) {
+      return res.status(400).json({ message: 'Missing title or frequency configuration' });
+    }
+
+    // Prepare update data
+    const updateData = {
+      title,
+      time_start: timeStart,
+      time_end: timeEnd,
+      monthly_day: monthlyDay || null,
+      specific_date: specificDate ? dayjs(specificDate).startOf('day').toDate() : null,
+    };
+
+    // Transaction to handle weekDays update (delete old, create new)
+    await prisma.$transaction(async (tx) => {
+      // 1. Update basic fields
+      await tx.habit.update({
+        where: { id },
+        data: updateData,
+      });
+
+      // 2. Update WeekDays if provided
+      if (weekDays) {
+        // Remove all existing weekDays for this habit
+        await tx.habitWeekDays.deleteMany({
+          where: { habit_id: id },
+        });
+
+        // Create new weekDays
+        if (weekDays.length > 0) {
+          await tx.habitWeekDays.createMany({
+            data: weekDays.map(weekDay => ({
+              habit_id: id,
+              week_day: weekDay,
+            })),
+          });
+        }
+      }
+    });
+
+    res.status(200).json({ message: 'Habit updated successfully' });
+  } catch (err) {
+    res.status(400).json({ error: 'Failed to update habit', details: err.message });
+  }
+}
