@@ -12,7 +12,19 @@ const app = express();
 
 // Configuração do CORS
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'https://habitflow-six.vercel.app',
+  origin: function(origin, callback) {
+    const allowedOrigins = ['http://localhost:5173', 'http://localhost:3000', 'https://habitflow-six.vercel.app'];
+    
+    if (process.env.CORS_ORIGIN) {
+      allowedOrigins.push(...process.env.CORS_ORIGIN.split(','));
+    }
+    
+    if (!origin || allowedOrigins.includes(origin) || process.env.CORS_ORIGIN === '*') {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
