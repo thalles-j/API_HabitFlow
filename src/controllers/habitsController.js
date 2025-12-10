@@ -214,3 +214,170 @@ export async function updateHabit(req, res) {
     res.status(400).json({ error: 'Failed to update habit', details: err.message });
   }
 }
+
+/**
+ * EXEMPLO DE TRANSAÇÃO COMPLEXA
+ * Cria múltiplos hábitos e marca progresso em lote de forma atômica
+ */
+export async function batchCreateHabitsWithProgress(req, res) {
+  try {
+    const { habits, markAsCompleted } = req.body;
+    // habits: Array<{ title, weekDays, monthlyDay, specificDate, timeStart, timeEnd }>
+    // markAsCompleted: { date: string, habitIndexes: number[] }
+
+    if (!habits || !Array.isArray(habits) || habits.length === 0) {
+      return res.status(400).json({ message: 'Habits array is required' });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const createdHabits = [];
+      const toggleDate = markAsCompleted?.date 
+        ? dayjs(markAsCompleted.date).startOf('day').toDate()
+        : dayjs().startOf('day').toDate();
+
+      // 1. Criar todos os hábitos
+      for (const habitInput of habits) {
+        const { title, weekDays, monthlyDay, specificDate, timeStart, timeEnd } = habitInput;
+
+        if (!title || (!weekDays?.length && !monthlyDay && !specificDate)) {
+          throw new Error(`Invalid habit: ${title || 'no title'}`);
+        }
+
+        let creationDate = dayjs().startOf('day');
+
+        if (!specificDate && timeStart) {
+          const [hours, minutes] = timeStart.split(':').map(Number);
+          const now = dayjs();
+          const habitTimeToday = dayjs().hour(hours).minute(minutes);
+
+          if (now.isAfter(habitTimeToday)) {
+            creationDate = creationDate.add(1, 'day');
+          }
+        }
+
+        const habitData = {
+          title,
+          created_at: creationDate.toDate(),
+          user_id: req.userId,
+          time_start: timeStart,
+          time_end: timeEnd,
+        };
+
+        if (weekDays && weekDays.length > 0) {
+          habitData.weekDays = {
+            create: weekDays.map(weekDay => ({ week_day: weekDay })),
+          };
+        }
+
+        if (monthlyDay) {
+          habitData.monthly_day = monthlyDay;
+        }
+
+        if (specificDate) {
+          habitData.specific_date = dayjs(specificDate).startOf('day').toDate();
+        }
+
+        const habit = await tx.habit.create({
+          data: habitData,
+          include: {
+            weekDays: true,
+          }
+        });
+
+        createdHabits.push(habit);
+      }
+
+      // 2. Se markAsCompleted foi fornecido, marcar progresso
+      let dayRecord = null;
+      const completedHabits = [];
+
+      if (markAsCompleted && markAsCompleted.habitIndexes?.length > 0) {
+        // Criar ou buscar o dia
+        dayRecord = await tx.day.findUnique({
+          where: { date: toggleDate },
+        });
+
+        if (!dayRecord) {
+          dayRecord = await tx.day.create({
+            data: { date: toggleDate, completed: false },
+          });
+        }
+
+        // Marcar hábitos selecionados como concluídos
+        for (const index of markAsCompleted.habitIndexes) {
+          if (index >= 0 && index < createdHabits.length) {
+            const habitToComplete = createdHabits[index];
+
+            const existingDayHabit = await tx.dayHabit.findUnique({
+              where: {
+                day_id_habit_id: {
+                  day_id: dayRecord.id,
+                  habit_id: habitToComplete.id,
+                }
+              }
+            });
+
+            if (!existingDayHabit) {
+              await tx.dayHabit.create({
+                data: {
+                  day_id: dayRecord.id,
+                  habit_id: habitToComplete.id,
+                }
+              });
+
+              completedHabits.push(habitToComplete.id);
+            }
+          }
+        }
+
+        // Verificar se o dia ficou 100% completo
+        const weekDay = dayjs(toggleDate).get('day');
+        const monthDay = dayjs(toggleDate).date();
+
+        const possibleHabitsCount = await tx.habit.count({
+          where: {
+            user_id: req.userId,
+            created_at: { lte: toggleDate },
+            OR: [
+              { weekDays: { some: { week_day: weekDay } } },
+              { monthly_day: monthDay }
+            ]
+          }
+        });
+
+        const completedHabitsCount = await tx.dayHabit.count({
+          where: {
+            day_id: dayRecord.id,
+            habit: {
+              user_id: req.userId,
+            }
+          }
+        });
+
+        const isCompleted = possibleHabitsCount > 0 && completedHabitsCount === possibleHabitsCount;
+
+        await tx.day.update({
+          where: { id: dayRecord.id },
+          data: { completed: isCompleted }
+        });
+      }
+
+      return {
+        createdHabits,
+        completedHabits,
+        dayCompleted: dayRecord?.completed || false,
+      };
+    });
+
+    res.status(201).json({
+      message: 'Habits created and progress marked successfully',
+      ...result,
+    });
+
+  } catch (err) {
+    res.status(400).json({ 
+      error: 'Transaction failed', 
+      details: err.message 
+    });
+  }
+}
