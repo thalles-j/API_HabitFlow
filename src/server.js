@@ -13,7 +13,7 @@ const app = express();
 // Configuração do CORS
 app.use(cors({
   origin: function(origin, callback) {
-    const allowedOrigins = ['http://localhost:5173', 'http://localhost:3000', 'https://habitflow-six.vercel.app'];
+    const allowedOrigins = ['http://localhost:5173', 'http://localhost:3000', 'https://habitflow-six.vercel.app', 'https://habitflow.com.br'];
     
     // Permitir deploys de preview da Vercel (qualquer subdomínio .vercel.app)
     if (origin && origin.endsWith('.vercel.app')) {
