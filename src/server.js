@@ -15,6 +15,11 @@ app.use(cors({
   origin: function(origin, callback) {
     const allowedOrigins = ['http://localhost:5173', 'http://localhost:3000', 'https://habitflow-six.vercel.app'];
     
+    // Permitir deploys de preview da Vercel (qualquer subdomínio .vercel.app)
+    if (origin && origin.endsWith('.vercel.app')) {
+      return callback(null, true);
+    }
+
     if (process.env.CORS_ORIGIN) {
       allowedOrigins.push(...process.env.CORS_ORIGIN.split(','));
     }
@@ -22,7 +27,8 @@ app.use(cors({
     if (!origin || allowedOrigins.includes(origin) || process.env.CORS_ORIGIN === '*') {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      console.log('🚫 Bloqueado pelo CORS:', origin);
+      callback(new Error(`Not allowed by CORS: ${origin}`));
     }
   },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
