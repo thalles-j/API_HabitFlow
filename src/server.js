@@ -12,25 +12,7 @@ const app = express();
 
 // Configuração do CORS
 app.use(cors({
-  origin: function(origin, callback) {
-    const allowedOrigins = ['http://localhost:5173', 'http://localhost:3000', 'https://habitflow-six.vercel.app', 'https://habitflow.com.br'];
-    
-    // Permitir deploys de preview da Vercel (qualquer subdomínio .vercel.app)
-    if (origin && origin.endsWith('.vercel.app')) {
-      return callback(null, true);
-    }
-
-    if (process.env.CORS_ORIGIN) {
-      allowedOrigins.push(...process.env.CORS_ORIGIN.split(','));
-    }
-    
-    if (!origin || allowedOrigins.includes(origin) || process.env.CORS_ORIGIN === '*') {
-      callback(null, true);
-    } else {
-      console.log('🚫 Bloqueado pelo CORS:', origin);
-      callback(new Error(`Not allowed by CORS: ${origin}`));
-    }
-  },
+  origin: '*', // Liberado para qualquer origem
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
